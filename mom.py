@@ -79,8 +79,86 @@ def calcLongShort(df, bin_col='bin', return_col='return', high_bin_col=10, low_b
 
     return result_df
 
-def loadStockMonthly(reload = False):
+def calculateStats(df, columns):
+    """
+    Calculate statistics for specified columns in a DataFrame.
 
+    Parameters:
+    df (pd.DataFrame): Input DataFrame containing the necessary columns.
+    columns (list): List of column names to calculate statistics for.
+
+    Returns:
+    pd.DataFrame: DataFrame with calculated statistics for each specified column.
+    """
+    # Define the statistics functions
+    def excess_return(x):
+        return x.mean() * 100 * 12
+
+    def volatility(x):
+        return x.std() * 100 * np.sqrt(12)
+
+    def sharpe_ratio(x):
+        std_dev = x.std()
+        return (x.mean() * 100 * 12) / (std_dev * 100 * np.sqrt(12)) if std_dev != 0 else np.nan
+
+    def skewness(x):
+        return x.skew()
+    
+    def kurtosis(x):
+        return x.kurtosis()
+
+    # Initialize a dictionary to store the statistics
+    stats = {
+        'Excess_Return': {},
+        'Volatility': {},
+        'Sharpe_Ratio': {},
+        'Skewness': {},
+        'Kurtosis': {}
+    }
+
+    # Calculate statistics for each specified column
+    for col in columns:
+        stats['Excess_Return'][col] = excess_return(df[col])
+        stats['Volatility'][col] = volatility(df[col])
+        stats['Sharpe_Ratio'][col] = sharpe_ratio(df[col])
+        stats['Skewness'][col] = skewness(df[col])
+        stats['Kurtosis'][col] = kurtosis(df[col])
+
+    # Convert the stats dictionary to a DataFrame for better visualization
+    stats_df = pd.DataFrame(stats)
+    return stats_df
+
+def calculateMaxDrawdown(data, start_date, end_date, ret_col='return'):
+    """
+    Calculates the maximum drawdown for a given DataFrame.
+
+    Parameters:
+    - data: DataFrame containing 'date' and return columns.
+    - start_date: Start date for the period to analyze.
+    - end_date: End date for the period to analyze.
+    - ret_col: Name of the column containing the returns.
+
+    Returns:
+    - max_drawdown: The maximum drawdown value.
+    """
+    # Filter data to only include dates within the specified range
+    df_filtered = data[(data['date'] >= start_date) & (data['date'] <= end_date)].copy()
+
+    # Calculate cumulative return
+    df_filtered['cumRet'] = (1 + df_filtered[ret_col]).cumprod()
+
+    # Calculate the running maximum
+    df_filtered['cumMax'] = df_filtered['cumRet'].cummax()
+
+    # Calculate the drawdown
+    df_filtered['drawdown'] = df_filtered['cumRet'] / df_filtered['cumMax'] - 1
+
+    # Identify the maximum drawdown
+    max_drawdown = df_filtered['drawdown'].min()
+
+    return max_drawdown
+
+def loadStockMonthly(reload = False):
     if reload:
         conn = wrds.Connection(wrds_username="kevinneco")
 
@@ -297,7 +375,7 @@ def calcExRet(df, return_col, isDatePeriod = False):
     pd.DataFrame: DataFrame with the adjusted return column and without the risk-free rate column.
     """
     # Load Fama-French risk-free rate data
-    rf_reader = pandas_datareader.famafrench.FamaFrenchReader('F-F_Research_Data_Factors',start='1926', end='2024')
+    rf_reader = pandas_datareader.famafrench.FamaFrenchReader('F-F_Research_Data_Factors',start='1926-01', end='2024-01')
     rf = rf_reader.read()[0] / 100
     
     # Reset index and prepare for merging
